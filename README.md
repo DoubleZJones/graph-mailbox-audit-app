@@ -1,95 +1,79 @@
-Mailbox‑Scoped Microsoft Graph Audit Identity
-Security & Compliance Engineering Entry
-Overview
-This entry documents the work to build a tightly scoped, app‑only Microsoft Graph identity that can read from only a small set of mailboxes. The goal was to create a secure, predictable audit lane without giving anyone elevated roles or broad Graph permissions. Access is locked down using a mail‑enabled security group, an Exchange Application Access Policy, and a clean MSAL.PS authentication flow.
+# Mailbox-Scoped Microsoft Graph Audit Identity
 
-This pattern gives us a safe, repeatable way to automate mailbox audits while staying aligned with Zero Trust and least‑privilege principles.
+This project implements a tightly scoped Microsoft Graph application designed to read only a specific set of mailboxes using app-only authentication. The goal was to create a predictable, least-privilege audit lane without granting broad Graph permissions or elevating any administrator’s personal account. Access is enforced through a mail-enabled security group and an Exchange Application Access Policy, ensuring the app can only see the mailboxes it is explicitly allowed to read.
 
-1. Mailbox‑Scoped Graph Application Identity
-Summary
-I created an Entra application that authenticates using client credentials and is restricted to only the mailboxes we explicitly allow. Access is controlled through a mail‑enabled security group and an Application Access Policy created in PowerShell, which together ensure the app can’t read or even see any other mailbox in the tenant.
+---
 
-Key Actions
-Registered a new Entra application for app‑only Graph access.
+## Overview
 
-Assigned Mail.Read and MailboxSettings.Read (Application) permissions.
+The core objectives of this project were:
 
-Created a mail‑enabled security group and added the two target mailboxes.
+- Build an app-only Graph identity using MSAL.PS.
+- Restrict the app to two specific mailboxes using a mail-enabled security group.
+- Enforce mailbox-level scoping with an Application Access Policy.
+- Validate the configuration using Test-ApplicationAccessPolicy.
+- Query messages, folders, and inbox rules without interactive login.
+- Export audit data directly to JSON for offline analysis.
 
-Additional mailboxes can be added to this group later as needed.
+The result is a secure, repeatable audit identity aligned with Zero Trust principles and safe for multi-operator use.
 
-Created the Application Access Policy using PowerShell (New-ApplicationAccessPolicy) to bind:
+---
 
-The app’s service principal
+## Phase 1: Creating the Mailbox-Scoped Application Identity
 
-The mail‑enabled security group as the allowed scope
+I began by creating a new Entra application configured for client-credentials authentication. This allowed the script to authenticate silently without any delegated permissions or user interaction.
 
-Validated the policy using Test-ApplicationAccessPolicy to confirm the app could only access the intended mailboxes.
+To keep the app strictly read-only, I assigned only the permissions required for mailbox auditing:
 
-Allowed mailboxes returned AccessAllowed
+- Mail.Read
+- MailboxSettings.Read (required for inbox rules)
 
-Everything else returned AccessDenied
+These permissions were granted at the application level and consented by an administrator.
 
-Verified real Graph behavior:
+---
 
-Allowed mailboxes return 200 OK
+## Phase 2: Scoping Access With a Mail-Enabled Security Group
 
-Restricted mailboxes return 404 NotFound
+To control which mailboxes the app could read, I created a mail-enabled security group and added the two target mailboxes. This group acts as the allow-list for the entire solution. Additional mailboxes can be added later without modifying the app or the policy.
 
-Added support for reading inbox rules via /mailFolders/inbox/messageRules.
+This group became the foundation for the Application Access Policy.
 
-Documented how to interpret 401, 403, and 404 errors for future troubleshooting.
+---
 
-Impact
-Delivered a safe, reusable audit identity that stays within its boundaries.
+## Phase 3: Enforcing Restrictions With an Application Access Policy
 
-Removed the need for elevated admin roles or delegated mailbox permissions.
+Using Exchange Online PowerShell, I created an Application Access Policy that binds:
 
-Created a repeatable pattern for secure mailbox‑level automation going forward.
+- The app’s service principal
+- The mail-enabled security group
 
-2. MSAL.PS Token Flow for Secure Automation
-Summary
-Set up a clean MSAL.PS‑based authentication flow that uses a SecureString client secret. This allows the script to run non‑interactively—no browser windows, no prompts—and makes it easy for multiple admins to use the tool safely.
+This policy ensures the app can only access mailboxes that are members of the group. Everything else is hidden from the app entirely.
 
-Key Actions
-Installed and configured MSAL.PS.
+To verify the configuration, I used Test-ApplicationAccessPolicy, which confirmed:
 
-Converted the client secret into a SecureString for safer handling.
+- Allowed mailboxes returned AccessAllowed
+- All other mailboxes returned AccessDenied
 
-Built a reusable function that acquires tokens with Get-MsalToken.
+This validation step ensured the scoping was correct before any Graph calls were made.
 
-Standardized the Bearer token header for all Graph calls.
+---
 
-Ensured the script never triggers interactive login or browser pop‑ups.
+## Phase 4: Querying Mailbox Data Using MSAL.PS
 
-Impact
-Provided a secure, automation‑friendly authentication method.
+With the policy in place, I implemented a clean MSAL.PS token flow using a SecureString client secret. This allowed the script to authenticate silently and consistently.
 
-Enabled consistent use across multiple operators.
+I tested the following Graph endpoints:
 
-Removed dependency on user accounts or delegated permissions entirely.
+- /messages for message retrieval
+- /mailFolders for folder enumeration
+- /mailFolders/inbox/messageRules for inbox rule auditing
 
-3. Graph Mailbox Audit Endpoints
-Summary
-Documented and validated the Graph endpoints needed for mailbox auditing, including messages, folders, and inbox rules. Confirmed that all endpoints behave correctly within the app’s restricted scope.
+Allowed mailboxes returned 200 OK, while restricted mailboxes returned 404 NotFound, confirming the policy was working as intended.
 
-Key Actions
-Queried /messages for message retrieval.
+To avoid browser rendering issues with large JSON responses, all output was exported directly to disk.
 
-Queried /mailFolders for folder enumeration.
+---
 
-Queried /mailFolders/inbox/messageRules for inbox rule auditing.
+## Impact
 
-Exported JSON results directly to disk to avoid browser rendering issues.
-
-Verified consistent 200/404 behavior across allowed and restricted mailboxes.
-
-Impact
-Established a clear, predictable audit workflow using Graph.
-
-Ensured consistent behavior across all mailbox‑scoped operations.
-
-Created a foundation for future enhancements (delta queries, attachments, etc.).
-
-About
-Real‑world identity, governance, and automation engineering focused on secure, least‑privilege patterns that scale across Microsoft 365 environments.
+This project delivered a secure, reusable audit identity that stays within its defined boundaries. It eliminates the need for elevated admin roles or delegated mailbox permissions and provides a repeatable pattern for safe mailbox-level automation across Microsoft 365 environments.
